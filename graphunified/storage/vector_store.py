@@ -402,13 +402,12 @@ class VectorStore:
         try:
             table = await self._get_or_create_table(self.entity_index_name, schema=None)
 
-            results = await asyncio.to_thread(
-                table.search, query_vector, limit=top_k
-            )
+            # LanceDB table.search() returns a Query object, call .limit() then .to_pandas()
+            search_query = table.search(query_vector).limit(top_k)
+            results = await asyncio.to_thread(search_query.to_pandas)
 
             output = []
-            result_data = results.to_pandas()
-            for _, row in result_data.iterrows():
+            for _, row in results.iterrows():
                 output.append((
                     row["id"],
                     row["_distance"],

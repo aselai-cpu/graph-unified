@@ -104,8 +104,8 @@ class GraphStore:
             edge_count = 0
             for rel in relationships:
                 # Skip if nodes don't exist (defensive)
-                if not self.graph.has_node(str(rel.source_id)) or not self.graph.has_node(
-                    str(rel.target_id)
+                if not self.graph.has_node(str(rel.source_entity_id)) or not self.graph.has_node(
+                    str(rel.target_entity_id)
                 ):
                     logger.warning(
                         f"Skipping relationship {rel.id}: missing source or target node"
@@ -113,8 +113,8 @@ class GraphStore:
                     continue
 
                 self.graph.add_edge(
-                    str(rel.source_id),
-                    str(rel.target_id),
+                    str(rel.source_entity_id),
+                    str(rel.target_entity_id),
                     id=str(rel.id),
                     type=rel.type.value,
                     description=rel.description or "",
@@ -153,8 +153,8 @@ class GraphStore:
         """
         edge_count = 0
         for rel in relationships:
-            if not self.graph.has_node(str(rel.source_id)) or not self.graph.has_node(
-                str(rel.target_id)
+            if not self.graph.has_node(str(rel.source_entity_id)) or not self.graph.has_node(
+                str(rel.target_entity_id)
             ):
                 logger.warning(
                     f"Skipping relationship {rel.id}: missing source or target node"
@@ -162,8 +162,8 @@ class GraphStore:
                 continue
 
             self.graph.add_edge(
-                str(rel.source_id),
-                str(rel.target_id),
+                str(rel.source_entity_id),
+                str(rel.target_entity_id),
                 id=str(rel.id),
                 type=rel.type.value,
                 description=rel.description or "",
