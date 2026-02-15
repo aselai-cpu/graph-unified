@@ -39,3 +39,13 @@ class TokenLimitError(APIError):
 class EmbeddingError(APIError):
     """Raised when embedding generation fails."""
     pass
+
+
+class IndexingError(GraphUnifiedError):
+    """Raised when indexing operations fail."""
+    pass
+
+
+class RetrievalError(GraphUnifiedError):
+    """Raised when retrieval operations fail."""
+    pass
