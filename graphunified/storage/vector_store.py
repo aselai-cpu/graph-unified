@@ -148,8 +148,11 @@ class VectorStore:
         Raises:
             StorageError: If indexing fails
         """
-        if len(chunk_ids) != len(embeddings) != len(texts):
-            raise ValueError("chunk_ids, embeddings, and texts must have same length")
+        if not (len(chunk_ids) == len(embeddings) == len(texts)):
+            raise ValueError(
+                f"chunk_ids, embeddings, and texts must have same length "
+                f"(got {len(chunk_ids)}, {len(embeddings)}, {len(texts)})"
+            )
 
         try:
             # Prepare data
@@ -204,8 +207,11 @@ class VectorStore:
         Raises:
             StorageError: If indexing fails
         """
-        if len(entity_ids) != len(embeddings) != len(names):
-            raise ValueError("entity_ids, embeddings, and names must have same length")
+        if not (len(entity_ids) == len(embeddings) == len(names)):
+            raise ValueError(
+                f"entity_ids, embeddings, and names must have same length "
+                f"(got {len(entity_ids)}, {len(embeddings)}, {len(names)})"
+            )
 
         try:
             data = []
@@ -258,8 +264,11 @@ class VectorStore:
         Raises:
             StorageError: If indexing fails
         """
-        if len(relationship_ids) != len(embeddings) != len(descriptions):
-            raise ValueError("All input lists must have same length")
+        if not (len(relationship_ids) == len(embeddings) == len(descriptions)):
+            raise ValueError(
+                f"All input lists must have same length "
+                f"(got {len(relationship_ids)}, {len(embeddings)}, {len(descriptions)})"
+            )
 
         try:
             data = []
@@ -313,8 +322,11 @@ class VectorStore:
         Raises:
             StorageError: If indexing fails
         """
-        if len(fact_ids) != len(embeddings) != len(subjects):
-            raise ValueError("All input lists must have same length")
+        if not (len(fact_ids) == len(embeddings) == len(subjects)):
+            raise ValueError(
+                f"All input lists must have same length "
+                f"(got {len(fact_ids)}, {len(embeddings)}, {len(subjects)})"
+            )
 
         try:
             data = []
@@ -520,8 +532,11 @@ class VectorStore:
         Raises:
             StorageError: If indexing fails
         """
-        if len(community_ids) != len(embeddings) != len(summaries):
-            raise ValueError("All input lists must have same length")
+        if not (len(community_ids) == len(embeddings) == len(summaries)):
+            raise ValueError(
+                f"All input lists must have same length "
+                f"(got {len(community_ids)}, {len(embeddings)}, {len(summaries)})"
+            )
 
         try:
             data = []

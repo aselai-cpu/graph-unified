@@ -200,5 +200,24 @@ class RetrievalStrategy(ABC):
         """
         return True
 
+    def _normalize_scores(
+        self, scores: List[float], method: str = "minmax"
+    ) -> List[float]:
+        """Normalize scores to [0, 1] range for cross-strategy comparison.
+
+        Args:
+            scores: Raw scores from retrieval
+            method: Normalization method ('minmax', 'rank', 'softmax', 'sigmoid')
+
+        Returns:
+            Normalized scores in [0, 1] range
+        """
+        from graphunified.strategies.utils import normalize_scores, rank_normalize_scores
+
+        if method == "rank":
+            return rank_normalize_scores(scores)
+        else:
+            return normalize_scores(scores, method=method)
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name='{self.name}')"
