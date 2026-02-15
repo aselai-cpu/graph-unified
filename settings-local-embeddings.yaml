@@ -1,0 +1,48 @@
+version: "1.0"
+
+# LLM Configuration (still requires API key)
+llm:
+  provider: anthropic
+  model: claude-3-5-sonnet-20241022
+  api_key: ${ANTHROPIC_API_KEY}
+  temperature: 0.0
+  max_tokens: 4096
+  timeout: 60
+  rate_limit:
+    requests_per_minute: 50
+    tokens_per_minute: 40000
+  retry:
+    max_attempts: 3
+    backoff_factor: 2.0
+
+# Local Embedding Configuration (FREE - no API key needed!)
+embedding:
+  provider: local  # Use sentence-transformers instead of Voyage AI
+  model: BAAI/bge-large-en-v1.5  # Best quality local model (1024d)
+  api_key: ""  # Not needed for local embeddings
+  dimension: 1024
+  batch_size: 32  # Adjust based on GPU memory
+  normalize: true
+
+# Indexing Configuration
+indexing:
+  chunk_size: 512
+  chunk_overlap: 128
+  extraction_batch_size: 10
+  dedup_threshold: 90
+  max_concurrent: 10
+
+# Storage Configuration
+storage:
+  root_dir: ./output
+  parquet_compression: snappy
+  vector_db:
+    backend: lancedb
+    index_type: IVF_FLAT
+  graph_format: graphml
+
+# Logging Configuration
+logging:
+  level: INFO
+  format: text
+  output: stdout

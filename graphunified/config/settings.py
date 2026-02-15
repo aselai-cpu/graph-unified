@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Literal, Optional
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
 
 from graphunified.config import defaults
@@ -47,16 +48,19 @@ class LLMConfig(BaseModel):
 class EmbeddingConfig(BaseModel):
     """Embedding configuration."""
 
-    provider: Literal["voyage", "openai", "cohere"] = defaults.DEFAULT_EMBEDDING_PROVIDER
+    provider: Literal["voyage", "openai", "cohere", "local"] = defaults.DEFAULT_EMBEDDING_PROVIDER
     model: str = defaults.DEFAULT_EMBEDDING_MODEL
-    api_key: str = Field(..., min_length=1)
+    api_key: str = Field(default="")  # Optional for local embeddings
     dimension: int = Field(defaults.DEFAULT_EMBEDDING_DIMENSION, ge=384, le=4096)
     batch_size: int = Field(defaults.DEFAULT_EMBEDDING_BATCH_SIZE, ge=1, le=512)
     normalize: bool = defaults.DEFAULT_EMBEDDING_NORMALIZE
 
     @field_validator("api_key")
     @classmethod
-    def validate_api_key_field(cls, v: str) -> str:
+    def validate_api_key_field(cls, v: str, info: any) -> str:
+        # Skip validation for local embeddings (no API key needed)
+        if "provider" in info.data and info.data["provider"] in ["local"]:
+            return v
         validate_api_key(v, "Embedding")
         return v
 
@@ -90,6 +94,23 @@ class ExtractionConfig(BaseModel):
     max_gleanings: int = Field(defaults.DEFAULT_MAX_GLEANINGS, ge=0, le=3)
     min_confidence: float = Field(defaults.DEFAULT_MIN_CONFIDENCE, ge=0.0, le=1.0)
     enable_coreference: bool = defaults.DEFAULT_ENABLE_COREFERENCE
+
+
+class IndexingConfig(BaseModel):
+    """Indexing pipeline configuration."""
+
+    chunk_size: int = Field(defaults.DEFAULT_INDEXING_CHUNK_SIZE, ge=128, le=4096)
+    chunk_overlap: int = Field(defaults.DEFAULT_INDEXING_CHUNK_OVERLAP, ge=0, le=512)
+    extraction_batch_size: int = Field(defaults.DEFAULT_INDEXING_EXTRACTION_BATCH_SIZE, ge=1, le=50)
+    dedup_threshold: int = Field(defaults.DEFAULT_INDEXING_DEDUP_THRESHOLD, ge=50, le=100)
+    max_concurrent: int = Field(defaults.DEFAULT_INDEXING_MAX_CONCURRENT, ge=1, le=50)
+
+    @field_validator("chunk_overlap")
+    @classmethod
+    def overlap_less_than_size(cls, v: int, info: any) -> int:
+        if "chunk_size" in info.data and v >= info.data["chunk_size"]:
+            raise ValueError("chunk_overlap must be < chunk_size")
+        return v
 
 
 class NaiveStrategyConfig(BaseModel):
@@ -210,6 +231,7 @@ class Settings(BaseModel):
     embedding: EmbeddingConfig
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     extraction: ExtractionConfig = Field(default_factory=ExtractionConfig)
+    indexing: IndexingConfig = Field(default_factory=IndexingConfig)
     strategies: StrategiesConfig = Field(default_factory=StrategiesConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     query: QueryConfig = Field(default_factory=QueryConfig)
@@ -220,6 +242,12 @@ class Settings(BaseModel):
     def load(cls, config_path: Path) -> "Settings":
         """Load settings from YAML file with environment variable substitution.
 
+        Automatically loads environment variables from .env file if present.
+        Search order for .env file:
+        1. Same directory as config file
+        2. Current working directory
+        3. Project root (parent directories up to 3 levels)
+
         Args:
             config_path: Path to YAML configuration file
 
@@ -229,6 +257,9 @@ class Settings(BaseModel):
         Raises:
             ConfigurationError: If file not found or invalid
         """
+        # Load .env file if present (searches multiple locations)
+        cls._load_env_file(config_path)
+
         if not config_path.exists():
             raise ConfigurationError(f"Configuration file not found: {config_path}")
 
@@ -253,6 +284,41 @@ class Settings(BaseModel):
         except Exception as e:
             raise ConfigurationError(f"Configuration validation failed: {e}")
 
+    @staticmethod
+    def _load_env_file(config_path: Path) -> None:
+        """Load .env file from multiple possible locations.
+
+        Search order:
+        1. Same directory as config file
+        2. Current working directory
+        3. Parent directories (up to 3 levels)
+
+        Args:
+            config_path: Path to configuration file
+        """
+        from pathlib import Path
+
+        search_paths = [
+            # Same directory as config file
+            config_path.parent / ".env",
+            # Current working directory
+            Path.cwd() / ".env",
+        ]
+
+        # Add parent directories (up to 3 levels up)
+        current = Path.cwd()
+        for _ in range(3):
+            parent = current.parent
+            if parent != current:  # Not at filesystem root
+                search_paths.append(parent / ".env")
+                current = parent
+
+        # Load first .env file found
+        for env_path in search_paths:
+            if env_path.exists():
+                load_dotenv(env_path, override=False)  # Don't override existing env vars
+                break
+
     def validate_completeness(self) -> None:
         """Validate that all required fields are present and valid.
 
@@ -263,7 +329,8 @@ class Settings(BaseModel):
         if self.llm.api_key.startswith("${"):
             raise ConfigurationError("LLM API key not resolved from environment")
 
-        if self.embedding.api_key.startswith("${"):
+        # Skip embedding API key validation for local provider
+        if self.embedding.provider != "local" and self.embedding.api_key.startswith("${"):
             raise ConfigurationError("Embedding API key not resolved from environment")
 
         # Validate storage directory

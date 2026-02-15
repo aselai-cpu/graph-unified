@@ -1,6 +1,6 @@
 # Core dependencies
 anthropic>=0.18.0
-voyageai>=0.2.0
+voyageai>=0.2.0  # Optional: only needed if using Voyage AI embeddings
 tiktoken>=0.5.0
 pyarrow>=14.0.0
 pandas>=2.0.0
@@ -9,6 +9,11 @@ pyyaml>=6.0
 httpx>=0.26.0
 aiofiles>=23.2.0
 tenacity>=8.2.0
+python-dotenv>=1.0.0  # For .env file support
+
+# Local embeddings (optional alternative to Voyage AI)
+sentence-transformers>=2.2.0  # For local embeddings
+torch>=2.0.0  # Required by sentence-transformers
 
 # Vector and graph storage
 lancedb>=0.3.0
@@ -25,3 +30,7 @@ mypy>=1.7.0
 
 # Optional dependencies for specific features
 numpy>=1.24.0
+fuzzywuzzy>=0.18.0
+python-levenshtein>=0.21.0
+click>=8.1.0
+tqdm>=4.65.0
