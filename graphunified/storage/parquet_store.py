@@ -339,6 +339,8 @@ class ParquetStore(StorageBackend):
             "start_char": chunk.start_char,
             "end_char": chunk.end_char,
             "token_count": chunk.token_count,
+            "embedding": chunk.embedding if chunk.embedding else [],
+            "embedding_model": chunk.embedding_model or "",
             "entity_ids": [str(eid) for eid in chunk.entity_ids],
             "relationship_ids": [str(rid) for rid in chunk.relationship_ids],
             "metadata": json.dumps(chunk.metadata),
@@ -353,6 +355,8 @@ class ParquetStore(StorageBackend):
             "description": entity.description or "",
             "source_chunks": [str(cid) for cid in entity.source_chunks],
             "extraction_confidence": entity.extraction_confidence,
+            "embedding": entity.embedding if entity.embedding else [],
+            "embedding_model": entity.embedding_model or "",
             "aliases": entity.aliases,
             "metadata": json.dumps(entity.metadata),
         }
@@ -368,6 +372,8 @@ class ParquetStore(StorageBackend):
             "source_chunks": [str(cid) for cid in rel.source_chunks],
             "extraction_confidence": rel.extraction_confidence,
             "weight": rel.weight,
+            "embedding": rel.embedding if rel.embedding else [],
+            "embedding_model": rel.embedding_model or "",
             "metadata": json.dumps(rel.metadata),
         }
 
@@ -434,6 +440,10 @@ class ParquetStore(StorageBackend):
         df = table.to_pandas()
 
         for _, row in df.iterrows():
+            # Handle embedding field (may be empty list if not embedded)
+            embedding = row["embedding"] if len(row["embedding"]) > 0 else None
+            embedding_model = row["embedding_model"] if row["embedding_model"] else None
+
             yield Chunk(
                 id=UUID(row["id"]),
                 document_id=UUID(row["document_id"]),
@@ -442,6 +452,8 @@ class ParquetStore(StorageBackend):
                 start_char=row["start_char"],
                 end_char=row["end_char"],
                 token_count=row["token_count"],
+                embedding=embedding,
+                embedding_model=embedding_model,
                 entity_ids=[UUID(eid) for eid in row["entity_ids"]],
                 relationship_ids=[UUID(rid) for rid in row["relationship_ids"]],
                 metadata=json.loads(row["metadata"]),
@@ -457,6 +469,10 @@ class ParquetStore(StorageBackend):
         df = table.to_pandas()
 
         for _, row in df.iterrows():
+            # Handle embedding field (may be empty list if not embedded)
+            embedding = row["embedding"] if len(row["embedding"]) > 0 else None
+            embedding_model = row["embedding_model"] if row["embedding_model"] else None
+
             yield Entity(
                 id=UUID(row["id"]),
                 name=row["name"],
@@ -464,6 +480,8 @@ class ParquetStore(StorageBackend):
                 description=row["description"] if row["description"] else None,
                 source_chunks=[UUID(cid) for cid in row["source_chunks"]],
                 extraction_confidence=row["extraction_confidence"],
+                embedding=embedding,
+                embedding_model=embedding_model,
                 aliases=row["aliases"],
                 metadata=json.loads(row["metadata"]),
             )
@@ -478,6 +496,10 @@ class ParquetStore(StorageBackend):
         df = table.to_pandas()
 
         for _, row in df.iterrows():
+            # Handle embedding field (may be empty list if not embedded)
+            embedding = row["embedding"] if len(row["embedding"]) > 0 else None
+            embedding_model = row["embedding_model"] if row["embedding_model"] else None
+
             yield Relationship(
                 id=UUID(row["id"]),
                 source_entity_id=UUID(row["source_entity_id"]),
@@ -487,6 +509,8 @@ class ParquetStore(StorageBackend):
                 source_chunks=[UUID(cid) for cid in row["source_chunks"]],
                 extraction_confidence=row["extraction_confidence"],
                 weight=row["weight"],
+                embedding=embedding,
+                embedding_model=embedding_model,
                 metadata=json.loads(row["metadata"]),
             )
 

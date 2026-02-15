@@ -26,10 +26,11 @@ CHUNK_SCHEMA = pa.schema(
         pa.field("start_char", pa.int32()),
         pa.field("end_char", pa.int32()),
         pa.field("token_count", pa.int32()),
+        pa.field("embedding", pa.list_(pa.float32())),  # Dense vector (1024d for Voyage)
+        pa.field("embedding_model", pa.string()),  # Model identifier
         pa.field("entity_ids", pa.list_(pa.string())),  # Bidirectional graph links
         pa.field("relationship_ids", pa.list_(pa.string())),
         pa.field("metadata", pa.string()),  # JSON string
-        # Note: embeddings stored in vector DB, not Parquet
     ]
 )
 
@@ -42,6 +43,8 @@ ENTITY_SCHEMA = pa.schema(
         pa.field("description", pa.string()),
         pa.field("source_chunks", pa.list_(pa.string())),
         pa.field("extraction_confidence", pa.float32()),
+        pa.field("embedding", pa.list_(pa.float32())),  # Dense vector
+        pa.field("embedding_model", pa.string()),  # Model identifier
         pa.field("aliases", pa.list_(pa.string())),
         pa.field("metadata", pa.string()),  # JSON string
     ]
@@ -58,8 +61,9 @@ RELATIONSHIP_SCHEMA = pa.schema(
         pa.field("source_chunks", pa.list_(pa.string())),
         pa.field("extraction_confidence", pa.float32()),
         pa.field("weight", pa.float32()),
+        pa.field("embedding", pa.list_(pa.float32())),  # Dense vector for LightRAG global search
+        pa.field("embedding_model", pa.string()),  # Model identifier
         pa.field("metadata", pa.string()),
-        # Note: relationship embeddings stored in vector DB for LightRAG global search
     ]
 )
 
