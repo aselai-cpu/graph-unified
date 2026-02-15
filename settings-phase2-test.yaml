@@ -1,0 +1,48 @@
+version: "1.0"
+
+# LLM Configuration
+llm:
+  provider: anthropic
+  model: claude-3-5-sonnet-20241022
+  api_key: ${ANTHROPIC_API_KEY}
+  temperature: 0.0
+  max_tokens: 4096
+  timeout: 60
+  rate_limit:
+    requests_per_minute: 50
+    tokens_per_minute: 40000
+  retry:
+    max_attempts: 3
+    backoff_factor: 2.0
+
+# Embedding Configuration
+embedding:
+  provider: voyage
+  model: voyage-3
+  api_key: ${VOYAGE_API_KEY}
+  dimension: 1024
+  batch_size: 128
+  normalize: true
+
+# Indexing Configuration
+indexing:
+  chunk_size: 512
+  chunk_overlap: 128
+  extraction_batch_size: 10
+  dedup_threshold: 90
+  max_concurrent: 10
+
+# Storage Configuration
+storage:
+  root_dir: ./output
+  parquet_compression: snappy
+  vector_db:
+    backend: lancedb
+    index_type: IVF_FLAT
+  graph_format: graphml
+
+# Logging Configuration
+logging:
+  level: INFO
+  format: text
+  output: stdout
