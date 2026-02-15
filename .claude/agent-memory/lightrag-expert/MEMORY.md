@@ -84,21 +84,14 @@ Chunk → Entities → Relationships
 
 ## Integration with graph-unified Project
 
-**Phase 2 Status (90% Complete):**
+**Phase 2 Status (100% Complete):**
 - ✅ Entity extraction with descriptions, confidence, source tracking
 - ✅ Relationship extraction with descriptions, type classification
 - ✅ Entity embeddings (name + description format)
 - ✅ Chunk embeddings
+- ✅ Relationship embeddings (VERIFIED: EmbedStage lines 81-85, 204-268)
 - ✅ Fuzzy entity deduplication (90% threshold, 30-50% reduction)
 - ✅ Bidirectional graph links (chunks ↔ entities ↔ relationships)
-- ❌ **CRITICAL GAP: Relationship embeddings NOT generated**
-
-**Missing Component Impact:**
-- Blocks LightRAG global search (relationship index unusable without embeddings)
-- Blocks LightRAG hybrid mode (cannot fuse entity + relationship results)
-- Local search still works (uses entity embeddings)
-- Fix cost: ~3% indexing cost increase (~$0.10 per 100 docs), negligible
-- Fix effort: 1-2 hours (add `_embed_relationships()` to EmbedStage)
 
 **Relationship Embedding Format:**
 ```
@@ -107,19 +100,48 @@ Example: "IPCC WORKS_FOR United Nations: IPCC scientists work for UN organizatio
 ```
 
 **Key Considerations:**
-- Fix relationship embeddings BEFORE Phase 3 LightRAG implementation
 - Leverage shared entity extraction across strategies
 - Design query router to select optimal strategy per query type
 - Monitor storage overhead with multiple indexes
+- Relationship embeddings are critical for global search quality
 
 ## Anti-Patterns to Avoid
 
 1. Don't use LightRAG for corpus-wide summarization (use GraphRAG communities)
 2. Don't skip relationship descriptions to save costs (degrades global search)
-3. **Don't skip relationship embeddings** (blocks global/hybrid search - current Phase 2 gap)
+3. Don't skip relationship embeddings (blocks global/hybrid search)
 4. Don't mix storage paths between strategies (causes index corruption)
 5. Don't use only local search (misses thematic context)
 6. Don't rebuild entire graph for small updates (use incremental indexing)
+7. **Don't use community-based retrieval for LightRAG global search** (use relationship embeddings)
+
+## Phase 3 Implementation Status
+
+**Fix Date:** 2026-02-15
+**Status:** ✅ FIXED - Now 100% aligned with LightRAG architecture
+
+**Original Issues (RESOLVED):**
+1. ✅ **FIXED**: Global search now uses relationship embeddings (not communities)
+2. ✅ **FIXED**: Removed `_rank_communities()` method
+3. ✅ **CORRECT**: Local search working properly (entity + BFS)
+4. ✅ **FIXED**: Global search now uses semantic vector search (40-80ms expected)
+
+**Changes Applied:**
+- Rewrote `_global_retrieval()` to search relationship embeddings
+- Added `_search_relationships()` helper method
+- Removed all community dependencies
+- Updated `index()`, `validate_index()` methods
+- Updated test_lightrag.py to verify relationship-based retrieval
+
+**Current Implementation:**
+- File: `/Users/aselaillayapparachchi/code/GraphRAG/Microsoft/graph-unified/graphunified/strategies/lightrag.py`
+- Lines 419-464: `_global_retrieval()` uses relationship search ✅
+- New method: `_search_relationships()` for semantic relationship search ✅
+- Lines 345-417: `_local_retrieval()` remains correct ✅
+
+**See:**
+- [phase3-review.md](phase3-review.md) for original issue identification
+- [phase3-fix.md](phase3-fix.md) for detailed fix documentation
 
 ## References
 

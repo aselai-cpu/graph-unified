@@ -443,13 +443,12 @@ class VectorStore:
         try:
             table = await self._get_or_create_table(self.relationship_index_name, schema=None)
 
-            results = await asyncio.to_thread(
-                table.search, query_vector, limit=top_k
-            )
+            # LanceDB table.search() returns a Query object, call .limit() then .to_pandas()
+            search_query = table.search(query_vector).limit(top_k)
+            results = await asyncio.to_thread(search_query.to_pandas)
 
             output = []
-            result_data = results.to_pandas()
-            for _, row in result_data.iterrows():
+            for _, row in results.iterrows():
                 output.append((
                     row["id"],
                     row["_distance"],
@@ -484,13 +483,12 @@ class VectorStore:
         try:
             table = await self._get_or_create_table(self.fact_index_name, schema=None)
 
-            results = await asyncio.to_thread(
-                table.search, query_vector, limit=top_k
-            )
+            # LanceDB table.search() returns a Query object, call .limit() then .to_pandas()
+            search_query = table.search(query_vector).limit(top_k)
+            results = await asyncio.to_thread(search_query.to_pandas)
 
             output = []
-            result_data = results.to_pandas()
-            for _, row in result_data.iterrows():
+            for _, row in results.iterrows():
                 output.append((
                     row["id"],
                     row["_distance"],
@@ -505,6 +503,93 @@ class VectorStore:
 
         except Exception as e:
             raise StorageError(f"Failed to search facts: {e}")
+
+    async def index_communities(
+        self,
+        community_ids: List[str],
+        embeddings: List[List[float]],
+        summaries: List[str],
+    ) -> None:
+        """Index community embeddings (for GraphRAG Global search).
+
+        Args:
+            community_ids: List of community IDs
+            embeddings: List of embedding vectors
+            summaries: List of community summaries
+
+        Raises:
+            StorageError: If indexing fails
+        """
+        if len(community_ids) != len(embeddings) != len(summaries):
+            raise ValueError("All input lists must have same length")
+
+        try:
+            data = []
+            for comm_id, embedding, summary in zip(community_ids, embeddings, summaries):
+                record = {
+                    "id": str(comm_id),  # Convert UUID to string
+                    "vector": embedding,
+                    "summary": summary,
+                }
+                data.append(record)
+
+            # Check if table exists
+            db = await self._get_db()
+            existing_tables = await asyncio.to_thread(db.table_names)
+            table_exists = self.community_index_name in existing_tables
+
+            if table_exists:
+                table = await self._get_or_create_table(self.community_index_name)
+                await asyncio.to_thread(table.add, data)
+            else:
+                table = await self._get_or_create_table(
+                    self.community_index_name,
+                    data=data,
+                )
+
+            logger.info(f"Indexed {len(community_ids)} communities")
+
+        except Exception as e:
+            raise StorageError(f"Failed to index communities: {e}")
+
+    async def search_communities(
+        self,
+        query_vector: List[float],
+        top_k: int = 10,
+    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+        """Search for similar communities (GraphRAG Global search).
+
+        Args:
+            query_vector: Query embedding vector
+            top_k: Number of results to return
+
+        Returns:
+            List of (community_id, score, metadata) tuples
+
+        Raises:
+            StorageError: If search fails
+        """
+        try:
+            table = await self._get_or_create_table(self.community_index_name, schema=None)
+
+            # LanceDB table.search() returns a Query object, call .limit() then .to_pandas()
+            search_query = table.search(query_vector).limit(top_k)
+            results = await asyncio.to_thread(search_query.to_pandas)
+
+            output = []
+            for _, row in results.iterrows():
+                output.append((
+                    row["id"],
+                    row["_distance"],
+                    {
+                        "summary": row["summary"],
+                    },
+                ))
+
+            return output
+
+        except Exception as e:
+            raise StorageError(f"Failed to search communities: {e}")
 
     async def count(self, index_name: str) -> int:
         """Count vectors in an index.
@@ -524,6 +609,122 @@ class VectorStore:
             return count
         except Exception as e:
             raise StorageError(f"Failed to count vectors in {index_name}: {e}")
+
+    async def index_entity_chunk_mappings(
+        self,
+        chunks: List[Any],  # Chunk objects with entity_ids
+        embeddings_dict: Dict[str, List[float]],  # chunk_id -> embedding
+    ) -> None:
+        """Build reverse index: entity_id -> chunks containing that entity.
+
+        This enables O(log n) lookup instead of O(n) scan when finding chunks
+        by entity IDs.
+
+        Args:
+            chunks: List of Chunk objects with populated entity_ids
+            embeddings_dict: Mapping of chunk_id -> embedding vector
+
+        Raises:
+            StorageError: If indexing fails
+        """
+        try:
+            # Build entity->chunk mappings
+            mappings = []
+            for chunk in chunks:
+                chunk_embedding = embeddings_dict.get(str(chunk.id))
+                if not chunk_embedding:
+                    continue
+
+                for entity_id in chunk.entity_ids:
+                    mappings.append({
+                        "id": f"{entity_id}_{chunk.id}",  # Composite key
+                        "entity_id": str(entity_id),
+                        "chunk_id": str(chunk.id),
+                        "vector": chunk_embedding,  # Store chunk embedding for fast retrieval
+                        "text_preview": chunk.text[:200],  # For display
+                    })
+
+            if not mappings:
+                logger.warning("No entity-chunk mappings to index")
+                return
+
+            # Check if table exists
+            db = await self._get_db()
+            existing_tables = await asyncio.to_thread(db.table_names)
+            table_exists = "entity_chunks" in existing_tables
+
+            if table_exists:
+                # Table exists, open it and add data
+                table = await self._get_or_create_table("entity_chunks")
+                await asyncio.to_thread(table.add, mappings)
+            else:
+                # Table doesn't exist, create it with data
+                table = await self._get_or_create_table("entity_chunks", data=mappings)
+
+            logger.info(f"Indexed {len(mappings)} entity-chunk mappings")
+
+        except Exception as e:
+            raise StorageError(f"Failed to index entity-chunk mappings: {e}")
+
+    async def get_chunks_by_entities(
+        self,
+        entity_ids: List[str],  # List of entity UUIDs as strings
+        parquet_store: Any,  # ParquetStore for loading full chunks
+    ) -> List[Any]:  # Returns Chunk objects
+        """Get all chunks connected to given entities (reverse lookup).
+
+        Fast O(log n) operation using entity-chunk index instead of O(n) scan.
+
+        Args:
+            entity_ids: List of entity IDs to find chunks for
+            parquet_store: ParquetStore to load full chunk data
+
+        Returns:
+            List of Chunk objects connected to any of the entities
+
+        Raises:
+            StorageError: If lookup fails
+        """
+        if not entity_ids:
+            return []
+
+        try:
+            table = await self._get_or_create_table("entity_chunks", schema=None)
+
+            # Query for all entity IDs
+            # LanceDB doesn't have great multi-value support, so query each entity
+            all_chunk_ids = set()
+
+            for entity_id in entity_ids:
+                results = await asyncio.to_thread(
+                    lambda eid=entity_id: table.search()
+                    .where(f"entity_id = '{eid}'")
+                    .limit(10000)  # Set reasonable limit
+                    .to_pandas()
+                )
+                if not results.empty:
+                    all_chunk_ids.update(results["chunk_id"].tolist())
+
+            if not all_chunk_ids:
+                logger.debug(f"No chunks found for {len(entity_ids)} entities")
+                return []
+
+            # Load full chunks from Parquet (much faster than scanning all)
+            chunks = []
+            async for chunk in parquet_store.load_chunks():
+                if str(chunk.id) in all_chunk_ids:
+                    chunks.append(chunk)
+                    # Early exit if we found all
+                    if len(chunks) == len(all_chunk_ids):
+                        break
+
+            logger.debug(f"Found {len(chunks)} chunks for {len(entity_ids)} entities")
+            return chunks
+
+        except Exception as e:
+            logger.error(f"Failed to get chunks by entities: {e}")
+            # Gracefully return empty list on error rather than raising
+            return []
 
     async def close(self) -> None:
         """Close database connection."""

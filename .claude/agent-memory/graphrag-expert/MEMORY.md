@@ -138,8 +138,29 @@ Current stable version patterns (as of Jan 2025):
 - Parquet storage format standard (not CSV)
 - Vector storage: FAISS, Lance, or external stores
 
+## Phase 3 Week 2 Implementation Review
+
+**GraphRAG Local**: 85% complete, production-ready ✅
+- Entity search → BFS traversal → chunk collection
+- Performance: ~50ms, excellent
+- Minor issue: Chunk loading scalability (loads all chunks)
+
+**GraphRAG Global**: 95% complete, production-ready ✅ (ENHANCED)
+- ✅ Leiden algorithm with Louvain fallback
+- ✅ Embedding-based community ranking (semantic similarity)
+- ✅ Map-reduce answer synthesis with LLM
+- Performance: ~150-250ms (expected for synthesis)
+- Remaining: Multi-level hierarchical communities
+
+See detailed notes:
+- `phase3-week2-review.md` (original assessment)
+- `phase3-week2-enhancements.md` (implementation details)
+
 ## Related Memory Files
 
+- `phase2-review.md` - Phase 2 indexing pipeline assessment
+- `phase3-week2-review.md` - Phase 3 GraphRAG Local/Global implementation review
+- `phase3-week2-enhancements.md` - GraphRAG Global enhancements (Leiden, embeddings, synthesis)
 - `unified-integration.md` - Detailed patterns for multi-strategy RAG systems
 - `configuration-patterns.md` - Complete configuration reference and tuning guide
 - `troubleshooting.md` - Common errors and debugging workflows

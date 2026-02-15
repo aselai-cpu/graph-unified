@@ -1,18 +1,18 @@
 """LightRAG: Dual-level knowledge graph retrieval strategy.
 
 LightRAG is a lightweight graph-based RAG approach that intelligently combines
-entity-level (local) and community-level (global) retrieval based on query type.
+entity-level (local) and relationship-level (global) retrieval based on query type.
 
 Key Features:
 - Automatic query classification (local, global, or hybrid mode)
 - Entity-level retrieval for specific queries
-- Community-level retrieval for thematic queries
+- Relationship-level retrieval for thematic queries
 - Hybrid mode combining both levels for complex queries
-- Lighter weight than full GraphRAG (no PPR, simpler graph ops)
+- Lighter weight than full GraphRAG (no PPR, no community hierarchies)
 
 Query Modes:
 - LOCAL: Entity-focused retrieval (e.g., "What is GraphRAG?")
-- GLOBAL: Community-focused retrieval (e.g., "What are the main themes?")
+- GLOBAL: Relationship-focused retrieval (e.g., "What are the main themes?")
 - HYBRID: Combined retrieval (e.g., "How does X relate to the broader context?")
 """
 
@@ -38,7 +38,7 @@ class QueryMode:
     """Query execution modes for LightRAG."""
 
     LOCAL = "local"  # Entity-level retrieval
-    GLOBAL = "global"  # Community-level retrieval
+    GLOBAL = "global"  # Relationship-level retrieval
     HYBRID = "hybrid"  # Combined retrieval
 
 
@@ -46,12 +46,12 @@ class LightRAGStrategy(RetrievalStrategy):
     """LightRAG: Intelligent dual-level knowledge graph retrieval.
 
     LightRAG automatically determines whether to use entity-level (local)
-    or community-level (global) retrieval based on the query characteristics.
+    or relationship-level (global) retrieval based on the query characteristics.
 
     Architecture:
     1. Query Classification: Determine retrieval mode (local/global/hybrid)
     2. Local Mode: Find entities → expand graph → collect chunks
-    3. Global Mode: Find communities → aggregate summaries → collect chunks
+    3. Global Mode: Find relationships → extract entities → collect chunks
     4. Hybrid Mode: Combine both local and global results
 
     Best for:
@@ -98,8 +98,6 @@ class LightRAGStrategy(RetrievalStrategy):
         # Caches
         self._entity_cache: Dict[str, Entity] = {}
         self._relationship_cache: Dict[str, Relationship] = {}
-        self._communities: List[Community] = []
-        self._community_reports: Dict[int, str] = {}
 
         # Query classification keywords
         self._global_keywords = {
@@ -193,8 +191,8 @@ class LightRAGStrategy(RetrievalStrategy):
 
     @property
     def requires_communities(self) -> bool:
-        """LightRAG requires communities."""
-        return True
+        """LightRAG does not require communities."""
+        return False
 
     def supports_query_type(self, query_type: QueryType) -> bool:
         """Check if strategy supports a query type.
@@ -220,42 +218,27 @@ class LightRAGStrategy(RetrievalStrategy):
 
         For LightRAG:
         1. Cache entities and relationships
-        2. Store communities and summaries
-        3. Validate vector and graph stores
+        2. Validate vector and graph stores
 
         Args:
             chunks: Text chunks
             entities: Extracted entities
             relationships: Extracted relationships
-            communities: Detected communities with summaries
+            communities: Not used by LightRAG
         """
         if not entities:
             raise IndexingError("No entities found for LightRAG")
 
+        if not relationships:
+            raise IndexingError("No relationships found for LightRAG")
+
         # Build caches
         self._entity_cache = {str(e.id): e for e in entities}
         self._relationship_cache = {str(r.id): r for r in relationships}
-        self._communities = communities
-
-        # Build community reports from summaries
-        for idx, community in enumerate(communities):
-            if community.summary:
-                self._community_reports[idx] = community.summary
-            else:
-                # Fallback: create simple report
-                entity_names = [
-                    self._entity_cache[str(eid)].name
-                    for eid in community.entity_ids
-                    if str(eid) in self._entity_cache
-                ][:10]
-                self._community_reports[idx] = (
-                    f"{community.title or 'Community'}: "
-                    f"{', '.join(entity_names)}"
-                )
 
         logger.info(
             f"LightRAG ready: {len(self._entity_cache)} entities, "
-            f"{len(self._communities)} communities"
+            f"{len(self._relationship_cache)} relationships"
         )
 
     async def retrieve(
@@ -318,7 +301,7 @@ class LightRAGStrategy(RetrievalStrategy):
 
         Uses keyword matching to determine if query is:
         - LOCAL: Specific, factual questions (entity-focused)
-        - GLOBAL: Broad, exploratory questions (community-focused)
+        - GLOBAL: Broad, exploratory questions (relationship-focused)
         - HYBRID: Mixed or unclear queries
 
         Args:
@@ -419,12 +402,12 @@ class LightRAGStrategy(RetrievalStrategy):
     async def _global_retrieval(
         self, query: str, top_k: int
     ) -> RetrievalResult:
-        """Community-level (global) retrieval.
+        """Relationship-level (global) retrieval (TRUE LightRAG).
 
         Workflow:
-        1. Rank communities by relevance to query
-        2. Collect community reports as context
-        3. Get representative chunks from top communities
+        1. Search relationship embeddings semantically
+        2. Extract entities from top relationships
+        3. Collect chunks connected to these entities
 
         Args:
             query: Query text
@@ -433,58 +416,50 @@ class LightRAGStrategy(RetrievalStrategy):
         Returns:
             RetrievalResult with global context
         """
-        if not self._communities:
-            logger.warning("No communities available for global retrieval")
+        # Step 1: Find relevant relationships via semantic search
+        top_relationships = await self._search_relationships(query, top_k=20)
+
+        if not top_relationships:
+            logger.warning("No relationships found for global retrieval")
             return RetrievalResult(
                 strategy=f"{self.name} (global)",
                 chunks=[],
                 scores=[],
-                metadata={"mode": QueryMode.GLOBAL, "communities": 0},
+                metadata={"mode": QueryMode.GLOBAL, "relationships_searched": 0},
             )
 
-        # Step 1: Rank communities
-        ranked_communities = self._rank_communities(query, top_k=3)
-        logger.debug(f"Found {len(ranked_communities)} relevant communities")
+        logger.debug(f"Found {len(top_relationships)} relevant relationships")
 
-        # Step 2: Collect chunks from communities
-        chunks = []
-        scores = []
-        communities = []
+        # Step 2: Extract unique entities from relationships
+        entity_ids = set()
+        for rel, score in top_relationships:
+            entity_ids.add(rel.source_entity_id)
+            entity_ids.add(rel.target_entity_id)
 
-        for community, score in ranked_communities:
-            # Get report as chunk
-            comm_idx = self._communities.index(community)
-            report = self._community_reports.get(comm_idx, "")
+        logger.debug(f"Extracted {len(entity_ids)} entities from relationships")
 
-            if report:
-                chunk = Chunk(
-                    id=community.id,
-                    document_id=community.id,
-                    chunk_index=0,
-                    text=report,
-                    start_char=0,
-                    end_char=len(report),
-                    token_count=len(report.split()),
-                    metadata={
-                        "community_id": str(community.id),
-                        "community_title": community.title or "Untitled",
-                        "community_size": len(community.entity_ids),
-                        "is_community_report": True,
-                    },
-                )
-                chunks.append(chunk)
-                scores.append(score)
-                communities.append(community)
+        # Step 3: Get entities and relationships
+        entities = [
+            self._entity_cache[str(eid)]
+            for eid in entity_ids
+            if str(eid) in self._entity_cache
+        ]
+
+        relationships = [rel for rel, score in top_relationships]
+
+        # Step 4: Collect chunks connected to these entities
+        chunks, scores = await self._collect_entity_chunks(list(entity_ids), top_k)
 
         return RetrievalResult(
             strategy=f"{self.name} (global)",
             chunks=chunks,
             scores=scores,
-            communities=communities,
+            entities=entities,
+            relationships=relationships,
             metadata={
                 "mode": QueryMode.GLOBAL,
-                "communities_searched": len(self._communities),
-                "communities_retrieved": len(communities),
+                "relationships_searched": len(top_relationships),
+                "entities_extracted": len(entity_ids),
             },
         )
 
@@ -495,7 +470,7 @@ class LightRAGStrategy(RetrievalStrategy):
 
         Workflow:
         1. Run local retrieval (entity-focused)
-        2. Run global retrieval (community-focused)
+        2. Run global retrieval (relationship-focused)
         3. Combine results with weighted scoring
 
         Args:
@@ -548,7 +523,6 @@ class LightRAGStrategy(RetrievalStrategy):
             scores=combined_scores,
             entities=list(unique_entities),
             relationships=list(unique_relationships),
-            communities=global_result.communities,
             metadata={
                 "mode": QueryMode.HYBRID,
                 "local_weight": self.local_weight,
@@ -628,37 +602,37 @@ class LightRAGStrategy(RetrievalStrategy):
 
         return chunks, scores
 
-    def _rank_communities(
-        self, query: str, top_k: int
-    ) -> List[Tuple[Community, float]]:
-        """Rank communities by relevance to query.
-
-        Uses keyword matching on community reports.
+    async def _search_relationships(
+        self, query: str, top_k: int = 20
+    ) -> List[Tuple[Relationship, float]]:
+        """Search relationships by semantic similarity to query.
 
         Args:
             query: Query text
-            top_k: Number of communities to return
+            top_k: Number of relationships to return
 
         Returns:
-            List of (community, score) tuples
+            List of (relationship, score) tuples
         """
-        query_lower = query.lower()
-        query_tokens = set(query_lower.split())
+        # Step 1: Generate query embedding
+        query_embeddings = await self.embedding_client.embed([query])
+        query_vector = query_embeddings[0]
 
-        ranked = []
-        for idx, community in enumerate(self._communities):
-            report = self._community_reports.get(idx, "")
-            report_lower = report.lower()
+        # Step 2: Search relationship vector index
+        results = await self.vector_store.search_relationships(
+            query_vector=query_vector,
+            top_k=top_k,
+        )
 
-            # Score by query token matches
-            matches = sum(1 for token in query_tokens if token in report_lower)
-            score = matches / len(query_tokens) if query_tokens else 0.0
+        # Step 3: Convert to Relationship objects with scores
+        relationships = []
+        for rel_id, score, metadata in results:
+            if rel_id in self._relationship_cache:
+                relationships.append((self._relationship_cache[rel_id], score))
+            else:
+                logger.warning(f"Relationship {rel_id} not found in cache")
 
-            ranked.append((community, score))
-
-        # Sort by score
-        ranked.sort(key=lambda x: x[1], reverse=True)
-        return ranked[:top_k]
+        return relationships
 
     async def validate_index(self) -> bool:
         """Validate that indexes are ready.
@@ -671,14 +645,14 @@ class LightRAGStrategy(RetrievalStrategy):
                 logger.error("No entities cached")
                 return False
 
-            if not self._communities:
-                logger.error("No communities detected")
+            if not self._relationship_cache:
+                logger.error("No relationships cached")
                 return False
 
             logger.debug(
                 f"LightRAG validation passed: "
                 f"{len(self._entity_cache)} entities, "
-                f"{len(self._communities)} communities"
+                f"{len(self._relationship_cache)} relationships"
             )
             return True
 

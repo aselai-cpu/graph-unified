@@ -7,14 +7,15 @@ answer high-level, exploratory questions.
 
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Set
-from uuid import UUID
+from typing import Any, Dict, List, Set, Tuple
+from uuid import UUID, uuid4
 
 from graphunified.config.models import Chunk, Community, Entity, Relationship
 from graphunified.config.settings import GraphRAGStrategyConfig
 from graphunified.exceptions import IndexingError, RetrievalError
 from graphunified.storage.graph_store import GraphStore
 from graphunified.storage.parquet_store import ParquetStore
+from graphunified.storage.vector_store import VectorStore
 from graphunified.strategies.base import QueryType, RetrievalResult, RetrievalStrategy
 from graphunified.utils.embedding_factory import create_embedding_client
 from graphunified.utils.llm import ClaudeClient
@@ -59,6 +60,7 @@ class GraphRAGGlobalStrategy(RetrievalStrategy):
         parquet_store: ParquetStore,
         llm_client: ClaudeClient,
         embedding_client: Any,
+        vector_store: VectorStore,
     ):
         """Initialize GraphRAG Global strategy.
 
@@ -68,12 +70,14 @@ class GraphRAGGlobalStrategy(RetrievalStrategy):
             parquet_store: Parquet store for loading data
             llm_client: LLM client for report generation
             embedding_client: Embedding client for query encoding
+            vector_store: Vector store for community embeddings
         """
         super().__init__(config)
         self.graph_store = graph_store
         self.parquet_store = parquet_store
         self.llm_client = llm_client
         self.embedding_client = embedding_client
+        self.vector_store = vector_store
 
         # Strategy config
         self.top_k = getattr(config, 'top_k', 5)
@@ -116,7 +120,7 @@ class GraphRAGGlobalStrategy(RetrievalStrategy):
         embedding_client = create_embedding_client(embedding_config)
 
         # Load graph store
-        from graphunified.config.settings import StorageConfig
+        from graphunified.config.settings import StorageConfig, VectorDBConfig
 
         storage_config = StorageConfig()
         graph_store = GraphStore.from_config(storage_config, graph_store_path)
@@ -125,7 +129,13 @@ class GraphRAGGlobalStrategy(RetrievalStrategy):
         # Load parquet store
         parquet_store = ParquetStore(parquet_store_path)
 
-        return cls(config, graph_store, parquet_store, llm_client, embedding_client)
+        # Create vector store for community embeddings
+        vector_store_path = parquet_store_path / "vector_db"
+        vector_db_config = VectorDBConfig()
+        embedding_dim = getattr(embedding_config, 'dimension', 1024)
+        vector_store = VectorStore.from_config(vector_db_config, vector_store_path, embedding_dim)
+
+        return cls(config, graph_store, parquet_store, llm_client, embedding_client, vector_store)
 
     @property
     def name(self) -> str:
@@ -202,16 +212,22 @@ class GraphRAGGlobalStrategy(RetrievalStrategy):
         )
 
     async def _detect_communities(self) -> List[Community]:
-        """Detect communities using Louvain algorithm.
+        """Detect communities using Leiden algorithm (with Louvain fallback).
 
         Returns:
             List of Community objects
         """
-        # Use Louvain algorithm (available in NetworkX, no extra deps needed)
-        # Note: Leiden is better but requires python-igraph
-        node_to_community = await self.graph_store.detect_communities_louvain(
-            resolution=self.leiden_resolution
-        )
+        # Try Leiden first (better quality, hierarchical)
+        try:
+            node_to_community = await self.graph_store.detect_communities_leiden(
+                resolution=self.leiden_resolution
+            )
+            logger.info("Using Leiden algorithm for community detection")
+        except Exception as e:
+            logger.warning(f"Leiden failed ({e}), falling back to Louvain")
+            node_to_community = await self.graph_store.detect_communities_louvain(
+                resolution=self.leiden_resolution
+            )
 
         # Invert mapping: community_id -> [node_ids]
         community_to_nodes: Dict[int, List[str]] = {}
@@ -253,7 +269,7 @@ class GraphRAGGlobalStrategy(RetrievalStrategy):
         entities: List[Entity],
         relationships: List[Relationship],
     ) -> None:
-        """Generate summary reports for each community.
+        """Generate summary reports for each community and embed them.
 
         Args:
             chunks: All text chunks
@@ -263,6 +279,10 @@ class GraphRAGGlobalStrategy(RetrievalStrategy):
         # Build lookup maps
         chunk_map = {str(c.id): c for c in chunks}
         rel_map = {str(r.id): r for r in relationships}
+
+        # Collect reports for batch embedding
+        community_ids = []
+        community_summaries = []
 
         for idx, community in enumerate(self._communities):
             try:
@@ -304,6 +324,10 @@ class GraphRAGGlobalStrategy(RetrievalStrategy):
                 community.summary = report[:500]
                 community.title = self._extract_title(report, comm_int_id)
 
+                # Collect for batch embedding
+                community_ids.append(str(community.id))
+                community_summaries.append(report)
+
                 logger.debug(
                     f"Generated report for community {idx}: "
                     f"{len(comm_entities)} entities, "
@@ -314,6 +338,23 @@ class GraphRAGGlobalStrategy(RetrievalStrategy):
             except Exception as e:
                 logger.error(f"Failed to generate report for community {idx}: {e}")
                 self._community_reports[idx] = f"Error generating report: {e}"
+
+        # Embed all community reports
+        if community_summaries:
+            logger.info(f"Embedding {len(community_summaries)} community reports...")
+            try:
+                embeddings = await self.embedding_client.embed(community_summaries)
+
+                # Index community embeddings in vector store
+                await self.vector_store.index_communities(
+                    community_ids=community_ids,
+                    embeddings=embeddings,
+                    summaries=community_summaries,
+                )
+                logger.info(f"Indexed {len(community_ids)} community embeddings")
+            except Exception as e:
+                logger.error(f"Failed to embed community reports: {e}")
+                # Continue without embeddings (will fall back to keyword search)
 
     async def _generate_single_report(
         self,
@@ -427,7 +468,7 @@ IMPORTANCE:
         top_k: int = 5,
         **kwargs: Any,
     ) -> RetrievalResult:
-        """Retrieve relevant context using global community search.
+        """Retrieve relevant context using global community search with synthesis.
 
         Args:
             query: User query string
@@ -435,7 +476,7 @@ IMPORTANCE:
             **kwargs: Additional parameters
 
         Returns:
-            RetrievalResult with community reports
+            RetrievalResult with synthesized answer
 
         Raises:
             RetrievalError: If retrieval fails
@@ -454,49 +495,56 @@ IMPORTANCE:
                     metadata={"communities_found": 0},
                 )
 
-            # Step 1: Rank communities by relevance to query
+            # Step 1: Rank communities by semantic relevance to query
             logger.debug(f"Ranking {len(self._communities)} communities for query...")
-            ranked_communities = await self._rank_communities(query, top_k)
+            ranked_communities = await self._rank_communities_semantic(query, top_k)
 
-            # Step 2: Collect reports and create synthetic "chunks" from them
+            # Step 2: Collect community reports for synthesis
             logger.debug(f"Collecting {len(ranked_communities)} community reports...")
-            chunks = []
-            scores = []
+            community_data = []
             communities = []
+            scores = []
 
-            for idx, (community, score) in enumerate(ranked_communities):
+            for community, score in ranked_communities:
                 # Get report using index
                 comm_idx = self._communities.index(community)
                 report = self._community_reports.get(comm_idx, "")
 
-                # Create a pseudo-chunk from the report
-                chunk = Chunk(
-                    id=community.id,  # Use community UUID
-                    document_id=community.id,  # Use community UUID
-                    chunk_index=0,
-                    text=report,
-                    start_char=0,
-                    end_char=len(report),
-                    token_count=len(report.split()),
-                    metadata={
-                        "community_id": str(community.id),
-                        "community_title": community.title or "Untitled",
-                        "community_size": len(community.entity_ids),
-                    },
-                )
-                chunks.append(chunk)
-                scores.append(score)
+                community_data.append((community, report, score))
                 communities.append(community)
+                scores.append(score)
+
+            # Step 3: Synthesize answer from multiple community reports
+            logger.debug("Synthesizing answer from community reports...")
+            synthesized_answer = await self._synthesize_answer(query, community_data)
+
+            # Step 4: Return as a single synthetic chunk
+            chunk = Chunk(
+                id=uuid4(),
+                document_id=uuid4(),
+                chunk_index=0,
+                text=synthesized_answer,  # Synthesized answer, not raw report
+                start_char=0,
+                end_char=len(synthesized_answer),
+                token_count=len(synthesized_answer.split()),
+                metadata={
+                    "is_synthesized": True,
+                    "source_communities": [str(c.id) for c in communities],
+                    "community_titles": [c.title for c in communities],
+                    "query": query,
+                },
+            )
 
             retrieval_time = (time.time() - start_time) * 1000
 
             logger.info(
-                f"Retrieved {len(communities)} communities in {retrieval_time:.2f}ms"
+                f"Retrieved and synthesized from {len(communities)} communities "
+                f"in {retrieval_time:.2f}ms"
             )
 
             return RetrievalResult(
                 strategy=self.name,
-                chunks=chunks,  # Community reports as "chunks"
+                chunks=[chunk],  # Single synthesized chunk
                 scores=scores,
                 communities=communities,
                 retrieval_time_ms=retrieval_time,
@@ -504,6 +552,7 @@ IMPORTANCE:
                 metadata={
                     "total_communities": len(self._communities),
                     "communities_retrieved": len(communities),
+                    "is_synthesized": True,
                 },
             )
 
@@ -511,13 +560,52 @@ IMPORTANCE:
             logger.error(f"GraphRAG Global retrieval failed: {e}", exc_info=True)
             raise RetrievalError(f"Failed to retrieve with GraphRAG Global: {e}")
 
-    async def _rank_communities(
+    async def _rank_communities_semantic(
         self, query: str, top_k: int
-    ) -> List[tuple[Community, float]]:
-        """Rank communities by relevance to query.
+    ) -> List[Tuple[Community, float]]:
+        """Rank communities by semantic similarity to query.
 
-        Uses simple keyword matching on community reports for now.
-        Could be enhanced with embedding-based similarity.
+        Uses embedding-based similarity on community reports.
+
+        Args:
+            query: Query text
+            top_k: Number of communities to return
+
+        Returns:
+            List of (community, score) tuples
+        """
+        try:
+            # Embed query
+            query_embeddings = await self.embedding_client.embed([query])
+            query_vector = query_embeddings[0]
+
+            # Search community vector index
+            results = await self.vector_store.search_communities(
+                query_vector=query_vector,
+                top_k=top_k
+            )
+
+            # Map back to Community objects
+            ranked = []
+            for comm_id, distance, metadata in results:
+                # Find community by ID
+                community = next((c for c in self._communities if str(c.id) == comm_id), None)
+                if community:
+                    # Convert distance to similarity score (lower distance = higher similarity)
+                    # LanceDB returns L2 distance, convert to similarity score [0, 1]
+                    similarity = 1.0 / (1.0 + distance)
+                    ranked.append((community, similarity))
+
+            return ranked
+
+        except Exception as e:
+            logger.warning(f"Semantic search failed ({e}), falling back to keyword matching")
+            return await self._rank_communities_keyword(query, top_k)
+
+    async def _rank_communities_keyword(
+        self, query: str, top_k: int
+    ) -> List[Tuple[Community, float]]:
+        """Rank communities by keyword matching (fallback).
 
         Args:
             query: Query text
@@ -544,6 +632,62 @@ IMPORTANCE:
         ranked.sort(key=lambda x: x[1], reverse=True)
 
         return ranked[:top_k]
+
+    async def _synthesize_answer(
+        self,
+        query: str,
+        community_reports: List[Tuple[Community, str, float]]
+    ) -> str:
+        """Synthesize final answer from community reports using LLM.
+
+        This is the core innovation of GraphRAG Global - map-reduce over communities.
+
+        Args:
+            query: User query
+            community_reports: List of (community, report, score) tuples
+
+        Returns:
+            Synthesized answer
+        """
+        # Build context from top community reports
+        context_parts = []
+        for i, (community, report, score) in enumerate(community_reports, 1):
+            context_parts.append(f"""
+=== Community {i}: {community.title} (Relevance: {score:.2f}) ===
+{report}
+""")
+
+        context = "\n\n".join(context_parts)
+
+        # Create synthesis prompt
+        prompt = f"""You are answering a question using information from multiple thematic communities in a knowledge graph.
+
+Question: {query}
+
+Relevant Community Summaries:
+{context}
+
+Instructions:
+1. Synthesize a comprehensive answer that integrates insights from all communities
+2. Cite which communities support each claim (e.g., "Community 1 indicates...")
+3. If communities have conflicting information, acknowledge it
+4. Be concise but thorough (2-4 paragraphs)
+5. If the communities don't contain relevant information, say so
+
+Answer:"""
+
+        # Generate with LLM
+        try:
+            response, _, _ = await self.llm_client.generate(
+                prompt=prompt,
+                temperature=0.3,  # Slightly creative for synthesis
+                max_tokens=1000,
+            )
+            return response.strip()
+        except Exception as e:
+            logger.error(f"Answer synthesis failed: {e}")
+            # Fallback: concatenate reports
+            return context
 
     async def validate_index(self) -> bool:
         """Validate that communities and reports are ready.

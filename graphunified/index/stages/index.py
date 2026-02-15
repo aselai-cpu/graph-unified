@@ -298,6 +298,18 @@ class IndexStage(PipelineStage):
                 )
                 logger.info(f"Indexed {len(relationships_with_embeddings)} relationships in LanceDB")
 
+        # Build entity-chunk reverse index
+        if chunks and any(hasattr(c, 'entity_ids') and c.entity_ids for c in chunks):
+            logger.info("Building entity-chunk reverse index...")
+
+            # Get chunk embeddings
+            chunk_embeddings = {str(c.id): c.embedding for c in chunks if c.embedding}
+
+            await self.vector_store.index_entity_chunk_mappings(chunks, chunk_embeddings)
+            logger.info(f"Indexed entity-chunk mappings for {len(chunks)} chunks")
+        else:
+            logger.warning("Skipping entity-chunk index: chunks have no entity_ids")
+
     async def _build_text_index(self, chunks: List[Chunk]) -> None:
         """Build BM25 text index.
 

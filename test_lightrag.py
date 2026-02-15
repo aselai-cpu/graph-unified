@@ -67,41 +67,17 @@ async def main():
     )
 
     # Load data
-    print("6. Loading entities, relationships, chunks, and communities...")
+    print("6. Loading entities, relationships, and chunks...")
     entities = [e async for e in parquet_store.load_entities()]
     relationships = [r async for r in parquet_store.load_relationships()]
     chunks = [c async for c in parquet_store.load_chunks()]
 
-    # Load communities from GraphRAG Global test
-    # For this test, we'll detect communities directly
-    print("   Detecting communities...")
-    node_to_community = await graph_store.detect_communities_louvain(resolution=1.0)
-
-    # Convert to Community objects (simplified version)
-    from collections import defaultdict
-    from uuid import UUID
-
-    from graphunified.config.models import Community
-
-    community_to_nodes = defaultdict(list)
-    for node_id, comm_id in node_to_community.items():
-        community_to_nodes[comm_id].append(node_id)
-
+    # LightRAG no longer uses communities - pass empty list
     communities = []
-    for comm_id, entity_id_strs in community_to_nodes.items():
-        community = Community(
-            level=0,
-            entity_ids=[UUID(eid) for eid in entity_id_strs],
-            size=len(entity_id_strs),
-            title=f"Community {comm_id}",
-            summary=f"Community {comm_id} with {len(entity_id_strs)} entities",
-            metadata={"community_number": comm_id},
-        )
-        communities.append(community)
 
     print(
         f"   Loaded {len(entities)} entities, {len(relationships)} relationships, "
-        f"{len(chunks)} chunks, {len(communities)} communities"
+        f"{len(chunks)} chunks"
     )
 
     # Index
@@ -155,7 +131,6 @@ async def main():
             print(f"Retrieved: {len(result.chunks)} chunks")
             print(f"Entities: {len(result.entities)} entities")
             print(f"Relationships: {len(result.relationships)} relationships")
-            print(f"Communities: {len(result.communities)} communities")
             print(f"Time: {result.retrieval_time_ms:.2f}ms")
 
             if result.mean_score > 0:
@@ -173,8 +148,8 @@ async def main():
             elif mode == "global":
                 print(
                     f"\nGlobal mode metrics:"
-                    f"\n  Communities searched: {result.metadata.get('communities_searched', 0)}"
-                    f"\n  Communities retrieved: {result.metadata.get('communities_retrieved', 0)}"
+                    f"\n  Relationships searched: {result.metadata.get('relationships_searched', 0)}"
+                    f"\n  Entities extracted: {result.metadata.get('entities_extracted', 0)}"
                 )
             elif mode == "hybrid":
                 print(
@@ -196,9 +171,7 @@ async def main():
                 for j, (chunk, score) in enumerate(
                     zip(result.chunks[:2], result.scores[:2]), 1
                 ):
-                    is_report = chunk.metadata.get("is_community_report", False)
-                    chunk_type = "Community Report" if is_report else "Text Chunk"
-                    print(f"  [{j}] {chunk_type} (Score: {score:.3f})")
+                    print(f"  [{j}] Text Chunk (Score: {score:.3f})")
                     print(f"      {chunk.text[:150]}...")
 
         except Exception as e:
