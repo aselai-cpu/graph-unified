@@ -3,7 +3,7 @@
 import time
 from typing import Dict, List, Optional
 
-from graphunified.config.models import Chunk, Entity
+from graphunified.config.models import Chunk, Entity, Relationship
 from graphunified.index.stages.base import PipelineStage, ProgressCallback, StageResult, StageStatus
 from graphunified.utils.embedding import EmbeddingClient
 from graphunified.utils.logging import get_logger

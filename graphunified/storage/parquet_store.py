@@ -56,11 +56,63 @@ class ParquetStore(StorageBackend):
         # Create storage directory
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
+        # Create subdirectories for different data types
+        self.documents_dir = self.root_dir / "documents"
+        self.chunks_dir = self.root_dir / "chunks"
+        self.entities_dir = self.root_dir / "entities"
+        self.relationships_dir = self.root_dir / "relationships"
+        self.communities_dir = self.root_dir / "communities"
+        self.community_reports_dir = self.root_dir / "community_reports"
+        self.facts_dir = self.root_dir / "facts"  # For Phase 3
+        self.entity_chunk_edges_dir = self.root_dir / "entity_chunk_edges"  # For Phase 3
+
+        self.documents_dir.mkdir(exist_ok=True)
+        self.chunks_dir.mkdir(exist_ok=True)
+        self.entities_dir.mkdir(exist_ok=True)
+        self.relationships_dir.mkdir(exist_ok=True)
+        self.communities_dir.mkdir(exist_ok=True)
+        self.community_reports_dir.mkdir(exist_ok=True)
+        self.facts_dir.mkdir(exist_ok=True)
+        self.entity_chunk_edges_dir.mkdir(exist_ok=True)
+
         # Buffers for batched writes
         self.document_buffer: List[Document] = []
         self.chunk_buffer: List[Chunk] = []
         self.entity_buffer: List[Entity] = []
         self.relationship_buffer: List[Relationship] = []
+        self.community_buffer: List[Any] = []  # For community summaries (Phase 3)
+        self.community_report_buffer: List[Any] = []  # For community reports (Phase 3)
+
+        # Partition tracking for incremental writes
+        self._partition_counters = {
+            "documents": 0,
+            "chunks": 0,
+            "entities": 0,
+            "relationships": 0,
+            "communities": 0,
+            "community_reports": 0,
+            "facts": 0,
+            "entity_chunk_edges": 0,
+        }
+        self._load_partition_counts()
+
+    @classmethod
+    def from_config(cls, config: "StorageConfig", root_dir: Path) -> "ParquetStore":
+        """Create ParquetStore from configuration.
+
+        Args:
+            config: Storage configuration
+            root_dir: Root directory for storage
+
+        Returns:
+            ParquetStore instance
+        """
+        from graphunified.config.settings import StorageConfig
+        return cls(
+            root_dir=root_dir,
+            batch_size=1000,  # Default batch size
+            compression=config.parquet_compression,
+        )
         self.community_buffer: List[Community] = []
         self.community_report_buffer: List[CommunityReport] = []
 

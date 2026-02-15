@@ -10,7 +10,7 @@ import networkx as nx
 from networkx.algorithms import community
 
 from graphunified.config.models import Entity, Relationship
-from graphunified.config.settings import GraphDBConfig
+from graphunified.config.settings import StorageConfig
 from graphunified.exceptions import StorageError
 from graphunified.utils.logging import get_logger
 
@@ -54,11 +54,11 @@ class GraphStore:
         self.graph_file = self.root_dir / f"graph.{graph_format}"
 
     @classmethod
-    def from_config(cls, config: GraphDBConfig, root_dir: Path) -> "GraphStore":
+    def from_config(cls, config: StorageConfig, root_dir: Path) -> "GraphStore":
         """Create graph store from configuration.
 
         Args:
-            config: Graph DB configuration
+            config: Storage configuration
             root_dir: Root directory for storage
 
         Returns:
@@ -66,7 +66,7 @@ class GraphStore:
         """
         return cls(
             root_dir=root_dir,
-            directed=config.directed,
+            directed=True,  # Default to directed graph
             graph_format=config.graph_format,
         )
 

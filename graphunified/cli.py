@@ -88,8 +88,10 @@ def index(
         graph-unified index -i ./corpus -o ./output -c settings.yaml
     """
     # Setup logging
+    from graphunified.config.settings import LoggingConfig
     log_level = "DEBUG" if verbose else "INFO"
-    setup_logging(log_level)
+    log_config = LoggingConfig(level=log_level, format="text", output="stdout")
+    setup_logging(log_config)
 
     logger.info("=" * 80)
     logger.info("Graph-Unified Indexing Pipeline")
@@ -225,8 +227,10 @@ def query(
         graph-unified query -q "What is climate change?" -i ./output -s hybrid
     """
     # Setup logging
+    from graphunified.config.settings import LoggingConfig
     log_level = "DEBUG" if verbose else "INFO"
-    setup_logging(log_level)
+    log_config = LoggingConfig(level=log_level, format="text", output="stdout")
+    setup_logging(log_config)
 
     logger.info("Query functionality will be implemented in Phase 3")
     logger.info(f"Query: {query}")
