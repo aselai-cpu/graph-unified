@@ -1,0 +1,217 @@
+================================================================================
+Testing GraphRAG Global Strategy
+================================================================================
+
+1. Loading Parquet store...
+2. Loading knowledge graph...
+   Graph loaded: 25 nodes, 23 edges
+3. Creating LLM and embedding clients...
+4. Initializing GraphRAG Global strategy...
+5. Loading entities, relationships, and chunks...
+   Loaded 25 entities, 23 relationships, 3 chunks
+
+6. Detecting communities and generating reports...
+   (This may take a few minutes due to LLM calls...)
+   Detected 6 communities
+   Generated 6 reports
+
+7. Validating indexes...
+   Indexes valid: True
+
+8. Community Summaries:
+--------------------------------------------------------------------------------
+
+Community 0:
+  Title: Artificial Intelligence Ecosystem and Knowledge Representation Technologies
+  Size: 7 entities
+  Summary: TITLE: Artificial Intelligence Ecosystem and Knowledge Representation Technologies
+
+SUMMARY:
+This community represents the foundational landscape of modern artificial intelligence, encompassing the hi...
+
+Community 1:
+  Title: Artificial Intelligence and Modern Technology Integration
+  Size: 1 entities
+  Summary: TITLE: Artificial Intelligence and Modern Technology Integration
+
+SUMMARY:
+This community centers on Artificial Intelligence (AI) as a transformative force in modern technology. The entity encompasses...
+
+Community 2:
+  Title: GraphRAG and Advanced Retrieval-Augmented Generation Systems
+  Size: 7 entities
+  Summary: TITLE: GraphRAG and Advanced Retrieval-Augmented Generation Systems
+
+SUMMARY:
+This community represents the emerging ecosystem of retrieval-augmented generation (RAG) technologies, with a particular f...
+
+Community 3:
+  Title: Modern Text Embedding and Semantic Representation Technologies
+  Size: 1 entities
+  Summary: TITLE: Modern Text Embedding and Semantic Representation Technologies
+
+SUMMARY:
+This community centers on BAAI/bge-large-en-v1.5, a contemporary embedding model that transforms textual data into dense...
+
+Community 4:
+  Title: Approximate Nearest Neighbor Search Algorithms and Techniques
+  Size: 4 entities
+  Summary: TITLE: Approximate Nearest Neighbor Search Algorithms and Techniques
+
+SUMMARY:
+This community represents a focused cluster of concepts related to approximate nearest neighbor (ANN) search algorithms, ...
+
+
+9. Testing retrieval:
+--------------------------------------------------------------------------------
+
+================================================================================
+Query 1: What are the main themes in this corpus?
+================================================================================
+
+Strategy: GraphRAG Global
+Retrieved: 3 communities
+Time: 0.18ms
+Total communities searched: 6
+
+Top communities:
+
+  [1] Score: 0.625
+      Title: Artificial Intelligence and Modern Technology Integration
+      Size: 1 entities
+      Summary: TITLE: Artificial Intelligence and Modern Technology Integration
+
+SUMMARY:
+This community centers on Artificial Intelligence (AI) as a transformative ...
+
+  [2] Score: 0.625
+      Title: GraphRAG and Advanced Retrieval-Augmented Generation Systems
+      Size: 7 entities
+      Summary: TITLE: GraphRAG and Advanced Retrieval-Augmented Generation Systems
+
+SUMMARY:
+This community represents the emerging ecosystem of retrieval-augmented ...
+
+  [3] Score: 0.625
+      Title: Modern Text Embedding and Semantic Representation Technologies
+      Size: 1 entities
+      Summary: TITLE: Modern Text Embedding and Semantic Representation Technologies
+
+SUMMARY:
+This community centers on BAAI/bge-large-en-v1.5, a contemporary embed...
+
+Community reports (as chunks):
+
+  Report 1 (truncated):
+  TITLE: Artificial Intelligence and Modern Technology Integration
+
+SUMMARY:
+This community centers on Artificial Intelligence (AI) as a transformative force in modern technology. The entity encompasses the broad spectrum of AI applications and methodologies that are fundamentally changing how humans ...
+
+  Report 2 (truncated):
+  TITLE: GraphRAG and Advanced Retrieval-Augmented Generation Systems
+
+SUMMARY:
+This community represents the emerging ecosystem of retrieval-augmented generation (RAG) technologies, with a particular focus on GraphRAG—an advanced approach that integrates knowledge graphs with traditional RAG systems....
+
+================================================================================
+Query 2: Summarize the key topics discussed
+================================================================================
+
+Strategy: GraphRAG Global
+Retrieved: 3 communities
+Time: 0.10ms
+Total communities searched: 6
+
+Top communities:
+
+  [1] Score: 0.400
+      Title: Artificial Intelligence Ecosystem and Knowledge Representation Technologies
+      Size: 7 entities
+      Summary: TITLE: Artificial Intelligence Ecosystem and Knowledge Representation Technologies
+
+SUMMARY:
+This community represents the foundational landscape of m...
+
+  [2] Score: 0.400
+      Title: Artificial Intelligence and Modern Technology Integration
+      Size: 1 entities
+      Summary: TITLE: Artificial Intelligence and Modern Technology Integration
+
+SUMMARY:
+This community centers on Artificial Intelligence (AI) as a transformative ...
+
+  [3] Score: 0.400
+      Title: GraphRAG and Advanced Retrieval-Augmented Generation Systems
+      Size: 7 entities
+      Summary: TITLE: GraphRAG and Advanced Retrieval-Augmented Generation Systems
+
+SUMMARY:
+This community represents the emerging ecosystem of retrieval-augmented ...
+
+Community reports (as chunks):
+
+  Report 1 (truncated):
+  TITLE: Artificial Intelligence Ecosystem and Knowledge Representation Technologies
+
+SUMMARY:
+This community represents the foundational landscape of modern artificial intelligence, encompassing the hierarchical relationship between AI, machine learning, and deep learning, along with the major organi...
+
+  Report 2 (truncated):
+  TITLE: Artificial Intelligence and Modern Technology Integration
+
+SUMMARY:
+This community centers on Artificial Intelligence (AI) as a transformative force in modern technology. The entity encompasses the broad spectrum of AI applications and methodologies that are fundamentally changing how humans ...
+
+================================================================================
+Query 3: What does the corpus say about technology?
+================================================================================
+
+Strategy: GraphRAG Global
+Retrieved: 3 communities
+Time: 0.12ms
+Total communities searched: 6
+
+Top communities:
+
+  [1] Score: 0.143
+      Title: Artificial Intelligence Ecosystem and Knowledge Representation Technologies
+      Size: 7 entities
+      Summary: TITLE: Artificial Intelligence Ecosystem and Knowledge Representation Technologies
+
+SUMMARY:
+This community represents the foundational landscape of m...
+
+  [2] Score: 0.143
+      Title: Artificial Intelligence and Modern Technology Integration
+      Size: 1 entities
+      Summary: TITLE: Artificial Intelligence and Modern Technology Integration
+
+SUMMARY:
+This community centers on Artificial Intelligence (AI) as a transformative ...
+
+  [3] Score: 0.143
+      Title: GraphRAG and Advanced Retrieval-Augmented Generation Systems
+      Size: 7 entities
+      Summary: TITLE: GraphRAG and Advanced Retrieval-Augmented Generation Systems
+
+SUMMARY:
+This community represents the emerging ecosystem of retrieval-augmented ...
+
+Community reports (as chunks):
+
+  Report 1 (truncated):
+  TITLE: Artificial Intelligence Ecosystem and Knowledge Representation Technologies
+
+SUMMARY:
+This community represents the foundational landscape of modern artificial intelligence, encompassing the hierarchical relationship between AI, machine learning, and deep learning, along with the major organi...
+
+  Report 2 (truncated):
+  TITLE: Artificial Intelligence and Modern Technology Integration
+
+SUMMARY:
+This community centers on Artificial Intelligence (AI) as a transformative force in modern technology. The entity encompasses the broad spectrum of AI applications and methodologies that are fundamentally changing how humans ...
+
+================================================================================
+Test complete!
+================================================================================
