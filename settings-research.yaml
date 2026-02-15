@@ -1,0 +1,107 @@
+# Research Configuration Profile
+# High-quality settings for research and evaluation
+
+version: "1.0"
+
+llm:
+  provider: "anthropic"
+  model: "claude-opus-4-6"  # Highest quality model
+  api_key: "${ANTHROPIC_API_KEY}"
+  temperature: 0.0  # Deterministic for reproducibility
+  max_tokens: 8192  # Larger context for detailed analysis
+  timeout: 120  # Longer timeout for complex requests
+  rate_limit:
+    requests_per_minute: 30  # Conservative rate for opus
+    tokens_per_minute: 30000
+  retry:
+    max_attempts: 5  # More retries for reliability
+    backoff_factor: 2.0
+
+embedding:
+  provider: "voyage"
+  model: "voyage-3"
+  api_key: "${VOYAGE_API_KEY}"
+  dimension: 1024
+  batch_size: 128
+  normalize: true
+
+chunking:
+  strategy: "fixed"
+  chunk_size: 1024  # Larger chunks for better context
+  chunk_overlap: 128  # More overlap for continuity
+  respect_boundaries: true
+  encoding_name: "cl100k_base"
+
+extraction:
+  entity_types:
+    - "PERSON"
+    - "ORGANIZATION"
+    - "LOCATION"
+    - "EVENT"
+    - "DATE"
+    - "CONCEPT"
+    - "TECHNOLOGY"
+    - "OTHER"
+  relationship_types:
+    - "RELATED_TO"
+    - "PART_OF"
+    - "LOCATED_IN"
+    - "WORKS_FOR"
+    - "CAUSES"
+    - "SIMILAR_TO"
+    - "OPPOSITE_OF"
+    - "PRECEDES"
+  max_gleanings: 2  # Three passes for high recall
+  min_confidence: 0.6  # Lower threshold for recall
+  enable_coreference: false
+
+strategies:
+  naive:
+    enabled: true
+  hybrid:
+    enabled: true
+    alpha: 0.5
+    bm25_k1: 1.5
+    bm25_b: 0.75
+  graphrag:
+    enabled: true
+    leiden_resolution: 0.8  # Finer-grained communities
+    max_community_size: 50
+    generate_reports: true
+  lightrag:
+    enabled: true
+    entity_weight: 0.6
+  hipporag:
+    enabled: true
+    ppr_alpha: 0.85
+
+storage:
+  root_dir: "./output"
+  parquet_compression: "snappy"
+  vector_db:
+    backend: "lancedb"
+    index_type: "IVF_FLAT"
+  graph_format: "graphml"
+
+query:
+  default_strategy: "auto"
+  top_k: 20  # More results for analysis
+  generation:
+    enabled: true
+    temperature: 0.1  # Very low for consistency
+    max_tokens: 2000  # Detailed responses
+  routing:
+    enabled: true
+    strategy: "rule_based"
+
+performance:
+  workers: 8
+  batch_size: 10
+  cache_embeddings: true
+  enable_profiling: true
+
+logging:
+  level: "DEBUG"  # Detailed logging for research
+  format: "text"
+  output: "both"
+  file_path: "./logs/graphunified-research.log"

@@ -1,0 +1,98 @@
+# Development Configuration Profile
+# Fast and cheap settings for local development and testing
+
+version: "1.0"
+
+llm:
+  provider: "anthropic"
+  model: "claude-3-haiku-20240307"  # Fastest, cheapest model
+  api_key: "${ANTHROPIC_API_KEY}"
+  temperature: 0.0
+  max_tokens: 2048
+  timeout: 30
+  rate_limit:
+    requests_per_minute: 10  # Lower rate for dev
+    tokens_per_minute: 20000
+  retry:
+    max_attempts: 2
+    backoff_factor: 2.0
+
+embedding:
+  provider: "voyage"
+  model: "voyage-3"
+  api_key: "${VOYAGE_API_KEY}"
+  dimension: 1024
+  batch_size: 64  # Smaller batches for dev
+  normalize: true
+
+chunking:
+  strategy: "fixed"
+  chunk_size: 256  # Smaller chunks for faster processing
+  chunk_overlap: 32
+  respect_boundaries: true
+  encoding_name: "cl100k_base"
+
+extraction:
+  entity_types:
+    - "PERSON"
+    - "ORGANIZATION"
+    - "LOCATION"
+    - "CONCEPT"
+  relationship_types:
+    - "RELATED_TO"
+    - "WORKS_FOR"
+    - "LOCATED_IN"
+  max_gleanings: 0  # Single pass only
+  min_confidence: 0.7
+  enable_coreference: false
+
+strategies:
+  naive:
+    enabled: true
+  hybrid:
+    enabled: true
+    alpha: 0.5
+    bm25_k1: 1.5
+    bm25_b: 0.75
+  graphrag:
+    enabled: true
+    leiden_resolution: 1.0
+    max_community_size: 30  # Smaller communities for dev
+    generate_reports: false  # Skip expensive report generation
+  lightrag:
+    enabled: true
+    entity_weight: 0.6
+  hipporag:
+    enabled: true
+    ppr_alpha: 0.85
+
+storage:
+  root_dir: "./output"
+  parquet_compression: "snappy"
+  vector_db:
+    backend: "lancedb"
+    index_type: "IVF_FLAT"
+  graph_format: "graphml"
+
+query:
+  default_strategy: "auto"
+  top_k: 5  # Fewer results for dev
+  generation:
+    enabled: true
+    temperature: 0.3
+    max_tokens: 500
+  routing:
+    enabled: true
+    strategy: "rule_based"
+
+performance:
+  workers: 4  # Fewer workers for dev
+  batch_size: 5
+  cache_embeddings: true
+  enable_profiling: false
+
+logging:
+  level: "DEBUG"  # Verbose logging for dev
+  format: "text"
+  output: "stdout"
+  file_path: "./logs/graphunified-dev.log"
