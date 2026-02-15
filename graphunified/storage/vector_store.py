@@ -95,12 +95,14 @@ class VectorStore:
         self,
         table_name: str,
         schema: Optional[LanceModel] = None,
+        data: Optional[List[Dict]] = None,
     ) -> Any:
         """Get or create a table in the database.
 
         Args:
             table_name: Name of the table
             schema: Optional Pydantic schema for the table
+            data: Optional data to create table with (schema will be inferred)
 
         Returns:
             LanceDB table
@@ -116,11 +118,14 @@ class VectorStore:
         if table_name in existing_tables:
             table = await asyncio.to_thread(db.open_table, table_name)
         else:
-            if schema is None:
-                raise StorageError(f"Schema required to create new table: {table_name}")
-
-            # Create new table with schema
-            table = await asyncio.to_thread(db.create_table, table_name, schema=schema)
+            if schema is not None:
+                # Create new table with schema
+                table = await asyncio.to_thread(db.create_table, table_name, schema=schema)
+            elif data is not None:
+                # Create new table with data (schema inferred)
+                table = await asyncio.to_thread(db.create_table, table_name, data=data)
+            else:
+                raise StorageError(f"Schema or data required to create new table: {table_name}")
 
         self._tables[table_name] = table
         return table
@@ -151,21 +156,28 @@ class VectorStore:
             data = []
             for i, (chunk_id, embedding, text) in enumerate(zip(chunk_ids, embeddings, texts)):
                 record = {
-                    "id": chunk_id,
+                    "id": str(chunk_id),  # Convert UUID to string
                     "vector": embedding,
                     "text": text,
                     "metadata": metadata[i] if metadata else {},
                 }
                 data.append(record)
 
-            # Get or create table
-            table = await self._get_or_create_table(
-                self.chunk_index_name,
-                schema=None,  # LanceDB will infer schema
-            )
+            # Check if table exists
+            db = await self._get_db()
+            existing_tables = await asyncio.to_thread(db.table_names)
+            table_exists = self.chunk_index_name in existing_tables
 
-            # Add to table
-            await asyncio.to_thread(table.add, data)
+            if table_exists:
+                # Table exists, open it and add data
+                table = await self._get_or_create_table(self.chunk_index_name)
+                await asyncio.to_thread(table.add, data)
+            else:
+                # Table doesn't exist, create it with data
+                table = await self._get_or_create_table(
+                    self.chunk_index_name,
+                    data=data,
+                )
 
             logger.info(f"Indexed {len(chunk_ids)} chunks")
 
@@ -201,7 +213,7 @@ class VectorStore:
                 zip(entity_ids, embeddings, names, types)
             ):
                 record = {
-                    "id": entity_id,
+                    "id": str(entity_id),  # Convert UUID to string
                     "vector": embedding,
                     "name": name,
                     "type": etype,
@@ -209,8 +221,19 @@ class VectorStore:
                 }
                 data.append(record)
 
-            table = await self._get_or_create_table(self.entity_index_name, schema=None)
-            await asyncio.to_thread(table.add, data)
+            # Check if table exists
+            db = await self._get_db()
+            existing_tables = await asyncio.to_thread(db.table_names)
+            table_exists = self.entity_index_name in existing_tables
+
+            if table_exists:
+                table = await self._get_or_create_table(self.entity_index_name)
+                await asyncio.to_thread(table.add, data)
+            else:
+                table = await self._get_or_create_table(
+                    self.entity_index_name,
+                    data=data,
+                )
 
             logger.info(f"Indexed {len(entity_ids)} entities")
 
@@ -244,15 +267,26 @@ class VectorStore:
                 relationship_ids, embeddings, descriptions, types
             ):
                 record = {
-                    "id": rel_id,
+                    "id": str(rel_id),  # Convert UUID to string
                     "vector": embedding,
                     "description": desc,
                     "type": rtype,
                 }
                 data.append(record)
 
-            table = await self._get_or_create_table(self.relationship_index_name, schema=None)
-            await asyncio.to_thread(table.add, data)
+            # Check if table exists
+            db = await self._get_db()
+            existing_tables = await asyncio.to_thread(db.table_names)
+            table_exists = self.relationship_index_name in existing_tables
+
+            if table_exists:
+                table = await self._get_or_create_table(self.relationship_index_name)
+                await asyncio.to_thread(table.add, data)
+            else:
+                table = await self._get_or_create_table(
+                    self.relationship_index_name,
+                    data=data,
+                )
 
             logger.info(f"Indexed {len(relationship_ids)} relationships")
 

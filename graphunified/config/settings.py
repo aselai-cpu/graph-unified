@@ -166,6 +166,11 @@ class VectorDBConfig(BaseModel):
 
     backend: Literal["lancedb", "faiss", "qdrant"] = defaults.DEFAULT_VECTOR_DB_BACKEND
     index_type: Literal["IVF_FLAT", "IVF_PQ", "HNSW"] = defaults.DEFAULT_VECTOR_INDEX_TYPE
+    chunk_index_name: str = defaults.DEFAULT_CHUNK_INDEX_NAME
+    entity_index_name: str = defaults.DEFAULT_ENTITY_INDEX_NAME
+    relationship_index_name: str = defaults.DEFAULT_RELATIONSHIP_INDEX_NAME
+    fact_index_name: str = defaults.DEFAULT_FACT_INDEX_NAME
+    community_index_name: str = defaults.DEFAULT_COMMUNITY_INDEX_NAME
 
 
 class StorageConfig(BaseModel):

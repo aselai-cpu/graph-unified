@@ -12,8 +12,10 @@ from graphunified.index.stages.base import ProgressCallback, StageResult, StageS
 from graphunified.index.stages.chunk import ChunkStage
 from graphunified.index.stages.embed import EmbedStage
 from graphunified.index.stages.extract import ExtractStage
+from graphunified.index.stages.index import IndexStage
 from graphunified.index.stages.load import LoadStage
 from graphunified.storage.parquet_store import ParquetStore
+from graphunified.storage.vector_store import VectorStore
 from graphunified.utils.embedding_factory import create_embedding_client
 from graphunified.utils.llm import ClaudeClient
 from graphunified.utils.logging import get_logger
@@ -51,6 +53,13 @@ class IndexPipeline:
         # Initialize storage
         self.storage = ParquetStore.from_config(settings.storage, output_dir)
 
+        # Initialize vector store
+        self.vector_store = VectorStore.from_config(
+            settings.storage.vector_db,
+            output_dir / "lancedb",
+            settings.embedding.dimension
+        )
+
         # Initialize stages
         self.load_stage = LoadStage(input_dir, progress_callback=self._make_stage_callback("load"))
         self.chunk_stage = ChunkStage(
@@ -70,6 +79,11 @@ class IndexPipeline:
             embed_chunks=True,
             embed_entities=True,
             progress_callback=self._make_stage_callback("embed"),
+        )
+        self.index_stage = IndexStage(
+            vector_store=self.vector_store,
+            build_text_index=True,
+            progress_callback=self._make_stage_callback("index"),
         )
 
         # Pipeline state
@@ -110,7 +124,7 @@ class IndexPipeline:
 
         try:
             # Stage 1: Load documents
-            logger.info("Stage 1/4: Loading documents")
+            logger.info("Stage 1/5: Loading documents")
             load_result = await self.load_stage.execute()
             if load_result.status == StageStatus.FAILED:
                 raise RuntimeError(f"Load stage failed: {load_result.metadata.get('error')}")
@@ -124,7 +138,7 @@ class IndexPipeline:
                 logger.info("Saved documents to Parquet")
 
             # Stage 2: Chunk documents
-            logger.info("Stage 2/4: Chunking documents")
+            logger.info("Stage 2/5: Chunking documents")
             chunk_result = await self.chunk_stage.execute(documents)
             if chunk_result.status == StageStatus.FAILED:
                 raise RuntimeError(f"Chunk stage failed: {chunk_result.metadata.get('error')}")
@@ -139,7 +153,7 @@ class IndexPipeline:
 
             # Stage 3: Extract entities and relationships (optional)
             if not skip_extraction and chunks:
-                logger.info("Stage 3/4: Extracting entities and relationships")
+                logger.info("Stage 3/5: Extracting entities and relationships")
                 extract_result = await self.extract_stage.execute(chunks)
                 if extract_result.status == StageStatus.FAILED:
                     logger.warning(f"Extract stage failed: {extract_result.metadata.get('error')}")
@@ -151,11 +165,11 @@ class IndexPipeline:
                     chunks = extract_result.data.get("chunks", chunks)
                     logger.info(f"Extracted {len(entities)} entities and {len(relationships)} relationships")
             else:
-                logger.info("Stage 3/4: Skipping extraction (skip_extraction=True)")
+                logger.info("Stage 3/5: Skipping extraction (skip_extraction=True)")
 
             # Stage 4: Generate embeddings (optional)
             if not skip_embedding:
-                logger.info("Stage 4/4: Generating embeddings")
+                logger.info("Stage 4/5: Generating embeddings")
 
                 # Prepare input for embed stage
                 embed_input = {
@@ -178,7 +192,7 @@ class IndexPipeline:
                         f"and {embed_result.metadata['relationships_embedded']} relationships"
                     )
             else:
-                logger.info("Stage 4/4: Skipping embedding (skip_embedding=True)")
+                logger.info("Stage 4/5: Skipping embedding (skip_embedding=True)")
 
             # Save all results to Parquet
             logger.info("Saving results to Parquet")
@@ -197,6 +211,28 @@ class IndexPipeline:
             # Flush storage
             await self.storage.flush()
             logger.info("Flushed storage buffers")
+
+            # Stage 5: Build searchable indexes
+            if not skip_embedding:  # Only build indexes if we have embeddings
+                logger.info("Stage 5/5: Building searchable indexes")
+
+                index_input = {
+                    "chunks": chunks,
+                    "entities": entities,
+                    "relationships": relationships,
+                }
+
+                index_result = await self.index_stage.execute(index_input)
+                if index_result.status == StageStatus.FAILED:
+                    logger.warning(f"Index stage failed: {index_result.metadata.get('error')}")
+                else:
+                    logger.info(
+                        f"Built indexes: {index_result.metadata['chunks_indexed']} chunks, "
+                        f"{index_result.metadata['entities_indexed']} entities, "
+                        f"{index_result.metadata['relationships_indexed']} relationships"
+                    )
+            else:
+                logger.info("Stage 5/5: Skipping index building (no embeddings)")
 
             # Calculate final metrics
             duration = time.time() - start_time
