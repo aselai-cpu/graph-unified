@@ -199,6 +199,42 @@ class RoutingConfig(BaseModel):
     strategy: Literal["rule_based", "llm_based"] = defaults.DEFAULT_ROUTING_STRATEGY
 
 
+class QueryClassifierConfig(BaseModel):
+    """Query classifier configuration."""
+
+    mode: Literal["rule_based", "llm_based", "hybrid"] = defaults.DEFAULT_CLASSIFIER_MODE
+    confidence_threshold: float = Field(
+        defaults.DEFAULT_CLASSIFIER_CONFIDENCE_THRESHOLD, ge=0.0, le=1.0
+    )
+    llm_model: Optional[str] = None  # If None, uses main LLM config
+
+
+class FusionConfig(BaseModel):
+    """Result fusion configuration."""
+
+    method: Literal["rrf", "weighted", "rank"] = defaults.DEFAULT_FUSION_METHOD
+    rrf_k: int = Field(defaults.DEFAULT_RRF_K, ge=1, le=100)
+
+
+class QueryRouterConfig(BaseModel):
+    """Query router configuration."""
+
+    classifier: QueryClassifierConfig = Field(default_factory=QueryClassifierConfig)
+    multi_strategy_enabled: bool = defaults.DEFAULT_MULTI_STRATEGY_ENABLED
+    max_strategies_per_query: int = Field(
+        defaults.DEFAULT_MAX_STRATEGIES_PER_QUERY, ge=1, le=5
+    )
+    fusion: FusionConfig = Field(default_factory=FusionConfig)
+    response_synthesis_enabled: bool = defaults.DEFAULT_RESPONSE_SYNTHESIS_ENABLED
+    synthesis_temperature: float = Field(
+        defaults.DEFAULT_SYNTHESIS_TEMPERATURE, ge=0.0, le=1.0
+    )
+    fallback_enabled: bool = defaults.DEFAULT_FALLBACK_ENABLED
+    fallback_confidence_threshold: float = Field(
+        defaults.DEFAULT_FALLBACK_CONFIDENCE_THRESHOLD, ge=0.0, le=1.0
+    )
+
+
 class QueryConfig(BaseModel):
     """Query configuration."""
 
@@ -208,6 +244,7 @@ class QueryConfig(BaseModel):
     top_k: int = Field(defaults.DEFAULT_TOP_K, ge=1, le=100)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
+    router: QueryRouterConfig = Field(default_factory=QueryRouterConfig)
 
 
 class PerformanceConfig(BaseModel):
